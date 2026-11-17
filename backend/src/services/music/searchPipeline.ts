@@ -9,7 +9,7 @@ import { generateQueries } from "./queryGenerator.js";
 import { defaultDiscoveryProcessor } from "./discoveryProcessor.js";
 import { BACKEND_MOCK_TRACKS, getMockIntent } from "./mockMusic.js";
 import { fuseTrackLists, getSongSignature, normalizeSongTitle } from "./fusion.js";
-import { balanceTracks, createSemanticReranker, getPrimaryArtistKey, parseTargetArtists, resolveTargetArtists, userWantsInstrumental, type PreferenceProfile, type SemanticReranker } from "../gemini/reranker.js";
+import { balanceTracks, createSemanticReranker, getPrimaryArtistKey, isArtistExclusivePrompt, parseTargetArtists, resolveTargetArtists, userWantsInstrumental, type PreferenceProfile, type SemanticReranker } from "../gemini/reranker.js";
 import { logger } from "../../utils/logger.js";
 import { enrichTracksWithPreviews } from "../spotify/previewEnricher.js";
 import { contextualSearchQuery, enrichListeningContext } from "./browserContextEnricher.js";
@@ -359,7 +359,7 @@ export function createSearchPipeline({
       if (targetArtists.length > 1 && (!activeIntent.artist || parseTargetArtists(activeIntent.artist).length <= 1)) {
         activeIntent.artist = targetArtists.join(" and ");
       }
-      const isExclusiveArtist = Boolean(targetArtists.length > 0 && /\b(only|just|pure|exclusively|all)\b/i.test(prompt));
+      const isExclusiveArtist = isArtistExclusivePrompt(prompt, targetArtists);
       if (targetArtists.length > 1) {
         for (const art of targetArtists) {
           const songsQuery = `${art} songs`;
@@ -857,7 +857,7 @@ export function createSearchPipeline({
       if (targetArtists.length > 1 && (!intent.artist || parseTargetArtists(intent.artist).length <= 1)) {
         intent.artist = targetArtists.join(" and ");
       }
-      const isExclusiveArtist = Boolean(targetArtists.length > 0 && /\b(only|just|pure|exclusively|all)\b/i.test(prompt));
+      const isExclusiveArtist = isArtistExclusivePrompt(prompt, targetArtists);
       const safeOffset = Math.min(10, Math.max(0, (page - 1) * 5));
 
       // Continue an explicitly requested artist catalog on later pages even

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { applyCase6CQuotas, createSemanticReranker, isLanguageMatch, resolveTargetArtists } from "../../src/services/gemini/reranker.js";
+import { applyCase6CQuotas, createSemanticReranker, isArtistExclusivePrompt, isLanguageMatch, resolveTargetArtists } from "../../src/services/gemini/reranker.js";
 import type { GeminiClient } from "../../src/services/gemini/geminiClient.js";
 import type { MusicIntent } from "../../src/types/intent.js";
 import type { Track } from "../../src/types/track.js";
@@ -1036,6 +1036,16 @@ describe("Semantic Reranker (reranker.ts)", () => {
       expect(resolveTargetArtists("coldplay and radiohead only", "coldplay")).toEqual(["coldplay", "radiohead"]);
       expect(resolveTargetArtists("sad and chill music", null)).toEqual([]);
       expect(resolveTargetArtists("arijit singh", "arijit singh")).toEqual(["arijit singh"]);
+      expect(resolveTargetArtists("there is a person, they are not talking to me these day, someone else is replacing my place only hindi songs", null)).toEqual([]);
+    });
+
+    it("isArtistExclusivePrompt: disambiguates artist exclusivity from language/mood exclusivity", () => {
+      expect(isArtistExclusivePrompt("krsna and raftaar only", ["KR$NA", "raftaar"])).toBe(true);
+      expect(isArtistExclusivePrompt("arijit singh only", ["arijit singh"])).toBe(true);
+      expect(isArtistExclusivePrompt("only arijit singh", ["arijit singh"])).toBe(true);
+      expect(isArtistExclusivePrompt("only hindi songs", [])).toBe(false);
+      expect(isArtistExclusivePrompt("there is a person, they are not talking to me these day, someone else is replacing my place only hindi songs", [])).toBe(false);
+      expect(isArtistExclusivePrompt("arijit singh only hindi songs", ["arijit singh"])).toBe(true);
     });
   });
 });

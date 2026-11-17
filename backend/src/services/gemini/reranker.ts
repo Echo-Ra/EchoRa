@@ -138,6 +138,18 @@ export const COMMON_ARTIST_ALIASES: Record<string, string> = {
   pcrc: "Peter Cat Recording Co",
 };
 
+const SENTENCE_INDICATORS = /\b(is|are|am|was|were|talking|telling|replacing|doing|feeling|lost|someone|nobody|anyone|they|them|he|she|me|my|these|those|there|when|why|because|where|have|had|has|i|you|we)\b/i;
+
+export function isValidArtistCandidate(token: string): boolean {
+  const trimmed = token.trim();
+  if (!trimmed || trimmed.length > 30) return false;
+  const words = trimmed.split(/\s+/);
+  if (words.length > 3) return false;
+  if (SENTENCE_INDICATORS.test(trimmed)) return false;
+  if (NON_ARTIST_TOKENS.has(trimmed.toLowerCase())) return false;
+  return true;
+}
+
 /**
  * Resolves target artists from explicit intent or recovers multi-artist pairs
  * from the user prompt when an LLM drops secondary artists.
@@ -162,15 +174,49 @@ export function resolveTargetArtists(prompt?: string | null, artistStr?: string 
     .filter((p) => p.length > 0);
 
   if (parts.length >= 2) {
-    const validParts = parts.filter((p) => !NON_ARTIST_TOKENS.has(p.toLowerCase()));
+    const validParts = parts.filter(isValidArtistCandidate);
     if (validParts.length >= 2) {
       if (!artistStr || parts.some((p) => isArtistMatch(artistStr, p))) {
+        if (!artistStr) {
+          const hasKnownAlias = validParts.some((p) => Boolean(COMMON_ARTIST_ALIASES[p.toLowerCase()]));
+          if (!hasKnownAlias && validParts.length !== parts.length) {
+            return existing;
+          }
+        }
         return validParts.map((a) => COMMON_ARTIST_ALIASES[a.toLowerCase()] || a);
       }
     }
   }
 
   return existing;
+}
+
+/**
+ * Determines whether a prompt mandates an exclusive artist search (Case 6 C Quotas)
+ * without confusing language exclusivity ("only hindi") or mood exclusivity ("only sad") for artist exclusivity.
+ */
+export function isArtistExclusivePrompt(prompt?: string | null, targetArtists: string[] = []): boolean {
+  if (!prompt || targetArtists.length === 0) return false;
+
+  const hasExclWord = /\b(only|just|pure|exclusively|all)\b/i.test(prompt);
+  if (!hasExclWord) return false;
+
+  const isLanguageExclusive = /\b(only\s+(?:hindi|punjabi|english|tamil|telugu|bengali|marathi|spanish|korean|japanese|urdu|gujarati|bhojpuri)|(?:hindi|punjabi|english|tamil|telugu|bengali|marathi|spanish|korean|japanese|urdu|gujarati|bhojpuri)\s+only)\b/i.test(prompt);
+
+  const matchesArtistDirectly = targetArtists.some((art) => {
+    const escaped = art.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|\\b)${escaped}\\s+(?:only|just|pure|exclusively)|(?:only|just|pure|exclusively)\\s+${escaped}(?:\\b|$)`, "i").test(prompt);
+  });
+
+  if (matchesArtistDirectly) {
+    return true;
+  }
+
+  if (isLanguageExclusive) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
