@@ -43,13 +43,18 @@ export function createTransitionController(
       next: NextFunction,
     ) {
       try {
-        const { startingMood, destinationMood, stages } = req.body;
+        const { startingMood, destinationMood, stages, preferences, tasteProfile } = req.body;
         const intents = await stageIntentGenerator.generate(stages);
         const journey = await playlistAssembler.assemble(
           startingMood,
           destinationMood,
           stages,
           intents,
+          {
+            preferences,
+            tasteProfile,
+            signal: req.signal,
+          },
         );
         res.json(journey);
       } catch (err) {

@@ -83,6 +83,7 @@ export interface TransitionBalanceOptions {
   maxCumulativePerArtist?: number;
   excludeSignatures?: Set<string>;
   allowInstrumental?: boolean;
+  likedArtists?: Set<string>;
 }
 
 /**
@@ -144,21 +145,80 @@ export function balanceTransitionTracks(
     return true;
   }
 
-  // 1. Select up to 2 Hindi vocal songs
+  const likedArtists = options.likedArtists;
+
+  function isLiked(track: Track): boolean {
+    if (!likedArtists || likedArtists.size === 0) return false;
+    return track.artists.some((a) => likedArtists.has(a.toLowerCase().trim()));
+  }
+
+  // 1. Select up to 2 Hindi vocal songs (with 50/50 Liked vs Explore balance if liked pool provided)
   let hindiCount = 0;
-  for (const track of hindiPool) {
-    if (hindiCount >= 2) break;
-    if (trySelect(track)) {
-      hindiCount++;
+  if (likedArtists && likedArtists.size > 0) {
+    // 1 Liked Hindi
+    for (const track of hindiPool) {
+      if (isLiked(track) && trySelect(track)) {
+        hindiCount++;
+        break;
+      }
+    }
+    // 1 Explore Hindi
+    for (const track of hindiPool) {
+      if (!isLiked(track) && trySelect(track)) {
+        hindiCount++;
+        break;
+      }
+    }
+    // Deficit backfill if one of the slots was unfilled
+    if (hindiCount < 2) {
+      for (const track of hindiPool) {
+        if (hindiCount >= 2) break;
+        if (trySelect(track)) {
+          hindiCount++;
+        }
+      }
+    }
+  } else {
+    for (const track of hindiPool) {
+      if (hindiCount >= 2) break;
+      if (trySelect(track)) {
+        hindiCount++;
+      }
     }
   }
 
-  // 2. Select up to 2 English vocal songs
+  // 2. Select up to 2 English vocal songs (with 50/50 Liked vs Explore balance if liked pool provided)
   let englishCount = 0;
-  for (const track of englishPool) {
-    if (englishCount >= 2) break;
-    if (trySelect(track)) {
-      englishCount++;
+  if (likedArtists && likedArtists.size > 0) {
+    // 1 Liked English
+    for (const track of englishPool) {
+      if (isLiked(track) && trySelect(track)) {
+        englishCount++;
+        break;
+      }
+    }
+    // 1 Explore English
+    for (const track of englishPool) {
+      if (!isLiked(track) && trySelect(track)) {
+        englishCount++;
+        break;
+      }
+    }
+    // Deficit backfill if one of the slots was unfilled
+    if (englishCount < 2) {
+      for (const track of englishPool) {
+        if (englishCount >= 2) break;
+        if (trySelect(track)) {
+          englishCount++;
+        }
+      }
+    }
+  } else {
+    for (const track of englishPool) {
+      if (englishCount >= 2) break;
+      if (trySelect(track)) {
+        englishCount++;
+      }
     }
   }
 

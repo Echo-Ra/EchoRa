@@ -5,6 +5,8 @@ export interface UserPreferences {
   favoriteArtists: string[];
   dislikedGenres: string[];
   dislikedArtists: string[];
+  preferredLanguage?: string | null;
+  allowInstrumental?: boolean;
 }
 
 export interface HistorySignal {

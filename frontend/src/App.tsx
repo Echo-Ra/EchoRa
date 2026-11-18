@@ -13,6 +13,8 @@ import { RecentChips } from './components/RecentChips';
 import { Toasts } from './components/Toasts';
 import { CameraModal } from './components/CameraModal';
 import { PreferencesModal } from './components/PreferencesModal';
+import { AddToPlaylistModal } from './components/AddToPlaylistModal';
+import { PlaylistLibraryModal } from './components/playlists/PlaylistLibraryModal';
 import { MoodTransitionPage } from './components/transition/MoodTransitionPage';
 import { AudioPlayerProvider, useAudioPlayer } from './context/AudioPlayerContext';
 import { BottomPlayerBar } from './components/BottomPlayerBar';
@@ -24,9 +26,11 @@ import { loadMoreMusic, refineVibeMusic } from './api/client';
 import { createMockClient } from './api/mockClient';
 import {
   getStoredProfile,
+  saveProfile,
   setDiscoveryMode,
   subscribeToProfile,
 } from './services/preferenceStorage';
+import { supabase } from './lib/supabase';
 import { initPerfMetrics } from './utils/perfMetrics';
 import { collectBrowserContext } from './utils/browserContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -78,6 +82,8 @@ function AppContent({ api }: AppProps = {}) {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const [isPlaylistsOpen, setIsPlaylistsOpen] = useState(false);
+  const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
   const [activeTab, setActiveTab] = useState<'discover' | 'transition'>('discover');
   const [transitionMood, setTransitionMood] = useState<string | undefined>();
 
@@ -112,6 +118,42 @@ function AppContent({ api }: AppProps = {}) {
   useEffect(() => {
     return subscribeToProfile((updated) => setProfile(updated));
   }, []);
+
+  // Hydrate cloud preferences immediately when authenticated
+  useEffect(() => {
+    if (!user || isGuest) return;
+    const hydratePreferences = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (data && !error) {
+          const current = getStoredProfile();
+          const merged: StoredProfile = {
+            ...current,
+            discoveryMode: (data.discovery_mode as any) || current.discoveryMode,
+            preferences: {
+              ...current.preferences,
+              favoriteArtists: data.favorite_artists || [],
+              favoriteGenres: data.favorite_genres || [],
+              dislikedArtists: data.disliked_artists || [],
+              dislikedGenres: data.disliked_genres || [],
+              preferredLanguage: data.preferred_language ?? null,
+              allowInstrumental: data.allow_instrumental ?? false,
+            },
+          };
+          saveProfile(merged);
+          setProfile(merged);
+        }
+      } catch (err) {
+        console.warn('[App] Error hydrating remote preferences:', err);
+      }
+    };
+    void hydratePreferences();
+  }, [user, isGuest]);
 
   // Aurora mood theme retints smoothly based on intent
   const theme = useMoodTheme(data?.intent, activeTab === 'transition' ? transitionMood : undefined);
@@ -356,6 +398,7 @@ function AppContent({ api }: AppProps = {}) {
         isMockMode={isMockMode}
         onToggleMockMode={handleToggleMockMode}
         onOpenPreferences={handleOpenPreferences}
+        onOpenPlaylists={() => setIsPlaylistsOpen(true)}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onBrandClick={handleBrandClick}
@@ -375,7 +418,7 @@ function AppContent({ api }: AppProps = {}) {
               transition={reduceMotion ? { duration: 0 } : { duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
               className="w-full flex-1 flex flex-col"
             >
-              <MoodTransitionPage onMoodChange={setTransitionMood} />
+              <MoodTransitionPage onMoodChange={setTransitionMood} onToast={addToast} />
             </motion.div>
           ) : (
             <motion.div
@@ -447,6 +490,7 @@ function AppContent({ api }: AppProps = {}) {
                     hasMore={hasMorePages}
                     isLoadingMore={isLoadingMore}
                     onLoadMore={handleLoadMore}
+                    onAddToPlaylist={(track) => setAddToPlaylistTrack(track)}
                   />
 
                   {/* Search History Chips */}
@@ -484,6 +528,25 @@ function AppContent({ api }: AppProps = {}) {
           onClose={() => setIsPreferencesOpen(false)}
           onProfileUpdated={(updated) => setProfile(updated)}
           onNotify={(msg, type) => addToast(msg, type)}
+        />
+      )}
+
+      {/* Add to Playlist Modal */}
+      {addToPlaylistTrack && (
+        <AddToPlaylistModal
+          isOpen={Boolean(addToPlaylistTrack)}
+          track={addToPlaylistTrack}
+          onClose={() => setAddToPlaylistTrack(null)}
+          onToast={addToast}
+        />
+      )}
+
+      {/* Playlist Library Modal */}
+      {isPlaylistsOpen && (
+        <PlaylistLibraryModal
+          isOpen={isPlaylistsOpen}
+          onClose={() => setIsPlaylistsOpen(false)}
+          onToast={addToast}
         />
       )}
 

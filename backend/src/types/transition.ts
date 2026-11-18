@@ -1,4 +1,5 @@
 import type { Track } from "./track.js";
+import type { UserPreferences } from "./discovery.js";
 
 export interface MoodStage {
   stage: number;
@@ -54,6 +55,10 @@ export interface GenerateTransitionMusicRequest {
   startingMood: string;
   destinationMood: string;
   stages: MoodStage[];
+  preferences?: UserPreferences;
+  tasteProfile?: {
+    topArtists?: string[];
+  };
 }
 
 export interface StagePlaylist {

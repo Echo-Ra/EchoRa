@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Music, Music2, ExternalLink, Play, Pause, Loader2, Sparkles } from 'lucide-react';
+import { Music, Music2, ExternalLink, Play, Pause, Loader2, Sparkles, Plus } from 'lucide-react';
 import type { Track } from '../types';
 import { formatDuration } from '../lib/format';
 import { SpotifyIcon } from './ConnectSpotifyButton';
@@ -15,6 +15,7 @@ interface TrackCardProps {
   previewProgress: number;
   onTogglePreview: (track: Track) => void;
   onSelectTrack: (track: Track) => void;
+  onAddToPlaylist?: (track: Track) => void;
 }
 
 export const TrackCard = memo(function TrackCard({
@@ -25,6 +26,7 @@ export const TrackCard = memo(function TrackCard({
   previewProgress,
   onTogglePreview,
   onSelectTrack,
+  onAddToPlaylist,
 }: TrackCardProps) {
   const shouldReduceMotion = useReducedMotion();
   const [artLoaded, setArtLoaded] = useState(false);
@@ -249,9 +251,24 @@ export const TrackCard = memo(function TrackCard({
             </div>
           </div>
 
-          {/* Bottom Actions: Play Here / Open in catalog buttons */}
+          {/* Bottom Actions: Play Here / Open in catalog buttons / Add to Playlist */}
           <div className="flex items-center justify-end gap-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-1.5 shrink-0">
+              {onAddToPlaylist && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToPlaylist(track);
+                  }}
+                  aria-label={`Add "${track.name}" to playlist`}
+                  title="Add to playlist"
+                  className="inline-flex items-center justify-center p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.14] text-text-dim hover:text-cyan border border-white/10 hover:border-cyan/40 hover:scale-[1.08] active:scale-[0.95] transition-all cursor-pointer shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {handlePlayNative && (
                 <button
                   type="button"

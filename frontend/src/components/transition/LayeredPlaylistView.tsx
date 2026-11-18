@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import {
   Play,
   Pause,
@@ -7,20 +7,30 @@ import {
   ExternalLink,
   Music,
   Music2,
+  Check,
+  Sparkles,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { TransitionJourneyResponse } from "../../types/transition";
+import type { Track } from "../../types";
 import { formatDuration } from "../../lib/format";
 import { getMoodTheme } from "../../lib/moodTheme";
 import { SpotifyIcon } from "../ConnectSpotifyButton";
 import { useAudioPlayer } from "../../context/AudioPlayerContext";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../context/AuthContext";
 
 interface LayeredPlaylistViewProps {
   journey: TransitionJourneyResponse;
   onReset: () => void;
+  onToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
 }
 
-export const LayeredPlaylistView = memo(function LayeredPlaylistView({ journey, onReset }: LayeredPlaylistViewProps) {
+export const LayeredPlaylistView = memo(function LayeredPlaylistView({ journey, onReset, onToast }: LayeredPlaylistViewProps) {
+  const { user, isGuest, signInWithGoogle } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+
   let player: ReturnType<typeof useAudioPlayer> | null = null;
   try {
     player = useAudioPlayer();
@@ -29,6 +39,111 @@ export const LayeredPlaylistView = memo(function LayeredPlaylistView({ journey, 
   }
 
   const allJourneyTracks = journey.stages.flatMap((s) => s.tracks);
+
+  const handleSaveJourney = async () => {
+    if (!user || isGuest) {
+      void signInWithGoogle();
+      return;
+    }
+
+    if (allJourneyTracks.length === 0 || isSaving || isSaved) return;
+
+    setIsSaving(true);
+    try {
+      // 1. Unique name disambiguation
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const baseName = `Journey: ${journey.startingMood} to ${journey.destinationMood}`;
+      let playlistName = `${baseName} (${dateStr})`;
+
+      // 2. Check existing to avoid uq_user_playlist_name collision
+      const { data: existing } = await supabase
+        .from('playlists')
+        .select('name')
+        .eq('user_id', user.id)
+        .like('name', `${baseName}%`);
+
+      if (existing && existing.length > 0) {
+        playlistName = `${baseName} (${dateStr} · ${existing.length + 1})`;
+      }
+
+      // 3. Create playlist
+      const { data: newPl, error: plErr } = await supabase
+        .from('playlists')
+        .insert({
+          user_id: user.id,
+          name: playlistName,
+          description: `4-stage transition journey from ${journey.startingMood} to ${journey.destinationMood}`,
+        })
+        .select()
+        .single();
+
+      if (plErr) throw plErr;
+
+      // 4. Deduplicate tracks across stages by ID and deterministic sort
+      const uniqueTrackMap = new Map<string, Track>();
+      const dedupedJourneyTracks: Track[] = [];
+      for (const t of allJourneyTracks) {
+        if (!uniqueTrackMap.has(t.id)) {
+          uniqueTrackMap.set(t.id, t);
+          dedupedJourneyTracks.push(t);
+        }
+      }
+
+      const sortedCatalog = [...dedupedJourneyTracks].sort((a, b) => a.id.localeCompare(b.id));
+
+      const { error: tracksErr } = await supabase.from('tracks').upsert(
+        sortedCatalog.map((t) => ({
+          id: t.id,
+          name: t.name,
+          artists: t.artists,
+          album: t.album || null,
+          album_art_url: t.albumArtUrl || null,
+          preview_url: t.previewUrl || null,
+          duration_ms: t.durationMs || 0,
+          spotify_url: t.spotifyUrl || null,
+          catalog_source: t.catalogSource || 'spotify',
+          release_year: t.releaseYear || null,
+        })),
+        { onConflict: 'id', ignoreDuplicates: true },
+      );
+      if (tracksErr) throw tracksErr;
+
+      // 5. Insert ordered playlist_tracks
+      const ptRows = dedupedJourneyTracks.map((t, idx) => ({
+        playlist_id: newPl.id,
+        track_id: t.id,
+        position: idx + 1,
+      }));
+
+      const { error: ptErr } = await supabase
+        .from('playlist_tracks')
+        .upsert(ptRows, { onConflict: 'playlist_id,track_id', ignoreDuplicates: true });
+      if (ptErr) throw ptErr;
+
+      // 6. Database-as-Brain reward (+1.5) on core transition artists
+      const uniqueArtists = Array.from(new Set(allJourneyTracks.map((t) => t.artists[0]).filter(Boolean)));
+      for (const artist of uniqueArtists.slice(0, 5)) {
+        try {
+          await supabase.rpc('record_taste_interaction', {
+            p_artist: artist,
+            p_delta: 1.5,
+            p_genre: null,
+          });
+        } catch (rpcErr) {
+          console.warn('[Taste Telemetry] Error recording journey artist reward:', rpcErr);
+        }
+      }
+
+      setIsSaved(true);
+      onToast?.(`Saved journey as "${playlistName}"!`, 'success');
+    } catch (err: any) {
+      console.error('[Echora Journey] Save error:', err);
+      onToast?.(err?.message || 'Failed to save journey playlist.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
   const stageTitles: Record<number, string> = {
     1: "Starting Mood",
     2: "First Transition",
@@ -85,6 +200,26 @@ export const LayeredPlaylistView = memo(function LayeredPlaylistView({ journey, 
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={isSaving || isSaved}
+            onClick={() => void handleSaveJourney()}
+            className={`px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+              isSaved
+                ? 'bg-cyan/15 text-cyan border border-cyan/40 cursor-default'
+                : 'bg-cyan text-ink hover:brightness-110 active:scale-95 shadow-cyan/25'
+            }`}
+          >
+            {isSaving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : isSaved ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 fill-current" />
+            )}
+            <span>{isSaved ? 'Saved to Playlists' : isSaving ? 'Saving...' : 'Save Journey as Playlist'}</span>
+          </button>
+
           <button
             type="button"
             onClick={onReset}

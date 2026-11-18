@@ -6,7 +6,13 @@ import { LayeredPlaylistView } from "./LayeredPlaylistView";
 import { ThinkingState } from "../ThinkingState";
 import { ErrorCard } from "../ErrorCard";
 
-export function MoodTransitionPage({ onMoodChange }: { onMoodChange?: (mood: string | undefined) => void }) {
+export function MoodTransitionPage({
+  onMoodChange,
+  onToast,
+}: {
+  onMoodChange?: (mood: string | undefined) => void;
+  onToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
+}) {
   const [inputMode, setInputMode] = useState<MoodInputMode>("describe");
   const {
     status,
@@ -89,7 +95,7 @@ export function MoodTransitionPage({ onMoodChange }: { onMoodChange?: (mood: str
   }
 
   if (status === "playlist" && journey) {
-    return <LayeredPlaylistView journey={journey} onReset={reset} />;
+    return <LayeredPlaylistView journey={journey} onReset={reset} onToast={onToast} />;
   }
 
   if (status === "review" && stages.length === 4) {

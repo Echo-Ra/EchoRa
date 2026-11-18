@@ -29,12 +29,31 @@ const moodStageSchema = z.object({
   valence: z.number().min(0).max(1).optional(),
 });
 
+const stringListSchema = z
+  .preprocess((val) => (Array.isArray(val) ? val.filter((item): item is string => typeof item === "string") : []), z.array(z.string().trim().max(100)))
+  .catch([]);
+
+const transitionPreferencesSchema = z.object({
+  favoriteArtists: stringListSchema.default([]),
+  favoriteGenres: stringListSchema.default([]),
+  dislikedArtists: stringListSchema.default([]),
+  dislikedGenres: stringListSchema.default([]),
+  preferredLanguage: z.string().trim().nullable().optional(),
+  allowInstrumental: z.boolean().default(false),
+});
+
+const transitionTasteProfileSchema = z.object({
+  topArtists: stringListSchema.default([]),
+});
+
 const generateMusicSchema = z.object({
   startingMood: z.string().trim().min(1).max(50),
   destinationMood: z.string().trim().min(1).max(50),
   stages: z
     .array(moodStageSchema)
     .length(4, "Exactly four stages are required for music generation."),
+  preferences: transitionPreferencesSchema.optional(),
+  tasteProfile: transitionTasteProfileSchema.optional(),
 });
 
 export function createTransitionRouter(

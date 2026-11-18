@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, Heart, Ban, Sparkles } from 'lucide-react';
-import type { StoredProfile, UserPreferences } from '../types/discovery';
+import type { StoredProfile, PreferenceListCategory } from '../types/discovery';
 import {
   getStoredProfile,
+  saveProfile,
   addPreference,
   removePreference,
   clearPreferencesAndHistory,
 } from '../services/preferenceStorage';
+import { AuthContext } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface PreferencesModalProps {
   isOpen: boolean;
@@ -22,15 +25,78 @@ export function PreferencesModal({
   onProfileUpdated,
   onNotify,
 }: PreferencesModalProps) {
+  const authContext = useContext(AuthContext);
+  const user = authContext?.user ?? null;
+  const isGuest = authContext?.isGuest ?? true;
   const profile = getStoredProfile();
   const [activeTab, setActiveTab] = useState<'favorites' | 'dislikes'>('favorites');
   const [genreInput, setGenreInput] = useState('');
   const [artistInput, setArtistInput] = useState('');
 
+  const syncToSupabase = useCallback(
+    async (updated: StoredProfile) => {
+      if (!user || isGuest) return;
+      try {
+        await supabase.from('user_preferences').upsert(
+          {
+            user_id: user.id,
+            discovery_mode: updated.discoveryMode,
+            favorite_artists: updated.preferences.favoriteArtists,
+            favorite_genres: updated.preferences.favoriteGenres,
+            disliked_artists: updated.preferences.dislikedArtists,
+            disliked_genres: updated.preferences.dislikedGenres,
+            preferred_language: updated.preferences.preferredLanguage || null,
+            allow_instrumental: updated.preferences.allowInstrumental ?? false,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+      } catch (err) {
+        console.warn('[Preferences] Failed to sync to Supabase:', err);
+      }
+    },
+    [user, isGuest],
+  );
+
+  useEffect(() => {
+    if (!user || isGuest || !isOpen) return;
+    const fetchRemote = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (data && !error) {
+          const current = getStoredProfile();
+          const merged: StoredProfile = {
+            ...current,
+            discoveryMode: (data.discovery_mode as any) || current.discoveryMode,
+            preferences: {
+              ...current.preferences,
+              favoriteArtists: data.favorite_artists || [],
+              favoriteGenres: data.favorite_genres || [],
+              dislikedArtists: data.disliked_artists || [],
+              dislikedGenres: data.disliked_genres || [],
+              preferredLanguage: data.preferred_language ?? null,
+              allowInstrumental: data.allow_instrumental ?? false,
+            },
+          };
+          saveProfile(merged);
+          onProfileUpdated(merged);
+        }
+      } catch (err) {
+        console.warn('[Preferences] Error fetching remote preferences:', err);
+      }
+    };
+    void fetchRemote();
+  }, [user, isGuest, isOpen, onProfileUpdated]);
+
   if (!isOpen) return null;
 
   const handleAddPreference = (
-    category: keyof UserPreferences,
+    category: PreferenceListCategory,
     value: string,
     clearInput: () => void,
   ) => {
@@ -40,12 +106,14 @@ export function PreferencesModal({
     const updated = addPreference(category, trimmed);
     clearInput();
     onProfileUpdated(updated);
+    void syncToSupabase(updated);
     onNotify?.(`Added "${trimmed}" to your preferences.`, 'success');
   };
 
-  const handleRemovePreference = (category: keyof UserPreferences, item: string) => {
+  const handleRemovePreference = (category: PreferenceListCategory, item: string) => {
     const updated = removePreference(category, item);
     onProfileUpdated(updated);
+    void syncToSupabase(updated);
     onNotify?.(`Removed "${item}".`, 'info');
   };
 
@@ -53,6 +121,7 @@ export function PreferencesModal({
     if (window.confirm('Reset all preferences, interaction history, and discovery mode to Familiar?')) {
       const reset = clearPreferencesAndHistory();
       onProfileUpdated(reset);
+      void syncToSupabase(reset);
       onNotify?.('All preferences and history cleared. Mode reset to Familiar.', 'info');
       onClose();
     }

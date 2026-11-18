@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { MoodStage, TransitionJourneyResponse } from "../types/transition";
 import { planTransition, generateTransitionMusic, interpretTransition } from "../api/transitionApi";
+import { supabase } from "../lib/supabase";
+import { getStoredProfile } from "../services/preferenceStorage";
 
 export type TransitionStatus =
   | "select"
@@ -143,7 +145,68 @@ export function useMoodTransition() {
     setError(null);
 
     try {
-      const response = await generateTransitionMusic(startingMood, destinationMood, stages);
+      let preferencesPayload: any = undefined;
+      let tastePayload: any = undefined;
+
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const user = authData?.user;
+        if (user) {
+          // 1. Fetch user preferences
+          const { data: prefData } = await supabase
+            .from('user_preferences')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (prefData) {
+            preferencesPayload = {
+              favoriteArtists: prefData.favorite_artists || [],
+              favoriteGenres: prefData.favorite_genres || [],
+              dislikedArtists: prefData.disliked_artists || [],
+              dislikedGenres: prefData.disliked_genres || [],
+              preferredLanguage: prefData.preferred_language || null,
+              allowInstrumental: prefData.allow_instrumental || false,
+            };
+          }
+
+          // 2. Fetch taste profile top affinities
+          const { data: tasteData } = await supabase
+            .from('user_taste_profiles')
+            .select('artist_affinities')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (tasteData && tasteData.artist_affinities) {
+            const sortedArtists = Object.entries(tasteData.artist_affinities as Record<string, { weight: number }>)
+              .filter(([_, v]) => (v?.weight || 0) > 1.0)
+              .sort((a, b) => (b[1]?.weight || 0) - (a[1]?.weight || 0))
+              .map(([art]) => art);
+
+            if (sortedArtists.length > 0) {
+              tastePayload = { topArtists: sortedArtists.slice(0, 5) };
+            }
+          }
+        } else {
+          // Guest fallback: use local preferences stored in browser
+          const localProfile = getStoredProfile();
+          preferencesPayload = {
+            favoriteArtists: localProfile.preferences.favoriteArtists || [],
+            favoriteGenres: localProfile.preferences.favoriteGenres || [],
+            dislikedArtists: localProfile.preferences.dislikedArtists || [],
+            dislikedGenres: localProfile.preferences.dislikedGenres || [],
+            preferredLanguage: localProfile.preferences.preferredLanguage || null,
+            allowInstrumental: localProfile.preferences.allowInstrumental || false,
+          };
+        }
+      } catch (e) {
+        console.warn('[Echora Transition] Could not load taste profile for transition:', e);
+      }
+
+      const response = await generateTransitionMusic(startingMood, destinationMood, stages, {
+        preferences: preferencesPayload,
+        tasteProfile: tastePayload,
+      });
       setJourney(response);
       setStatus("playlist");
     } catch (err: unknown) {

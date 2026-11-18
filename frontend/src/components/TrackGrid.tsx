@@ -12,6 +12,7 @@ interface TrackGridProps {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
+  onAddToPlaylist?: (track: Track) => void;
 }
 
 export const TrackGrid = memo(function TrackGrid({
@@ -19,6 +20,7 @@ export const TrackGrid = memo(function TrackGrid({
   hasMore = true,
   isLoadingMore = false,
   onLoadMore,
+  onAddToPlaylist,
 }: TrackGridProps) {
   const [activePreviewId, setActivePreviewId] = useState<string | null>(null);
   const [previewProgress, setPreviewProgress] = useState(0);
@@ -164,6 +166,7 @@ export const TrackGrid = memo(function TrackGrid({
               previewProgress={isPlaying ? previewProgress : 0}
               onTogglePreview={handleTogglePreview}
               onSelectTrack={setSelectedTrack}
+              onAddToPlaylist={onAddToPlaylist}
             />
           );
         })}

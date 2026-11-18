@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import type { Track } from '../types';
+import { supabase } from '../lib/supabase';
 
 const LAST_PLAYING_TRACK_KEY = 'echora:last-playing-track';
 
@@ -42,6 +43,9 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const queueRef = useRef<Track[]>([]);
   const currentTrackRef = useRef<Track | null>(null);
   const loopAtEndRef = useRef<boolean>(true);
+  const hasLoggedListenRef = useRef<boolean>(false);
+  const hasLoggedCompleteRef = useRef<boolean>(false);
+  const artistListenTimesRef = useRef<Map<string, number[]>>(new Map());
 
   useEffect(() => {
     queueRef.current = queue;
@@ -60,6 +64,35 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
 
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+
+      // 30s listen telemetry trigger for Database-as-Brain (with loop cooldown: max 2 rewards/artist/hour)
+      if (audio.currentTime >= 30 && !hasLoggedListenRef.current) {
+        hasLoggedListenRef.current = true;
+        const current = currentTrackRef.current;
+        if (current && current.artists && current.artists[0]) {
+          const artistKey = current.artists[0].toLowerCase().trim();
+          const now = Date.now();
+          const oneHourAgo = now - 60 * 60 * 1000;
+          const prevTimes = (artistListenTimesRef.current.get(artistKey) || []).filter((t) => t > oneHourAgo);
+
+          if (prevTimes.length < 2) {
+            artistListenTimesRef.current.set(artistKey, [...prevTimes, now]);
+            const logListen = async () => {
+              try {
+                const { error: rpcErr } = await supabase.rpc('record_taste_interaction', {
+                  p_artist: current.artists[0],
+                  p_delta: 1.0,
+                  p_genre: null,
+                });
+                if (rpcErr) console.warn('[Taste Telemetry] 30s listen RPC error:', rpcErr);
+              } catch (err) {
+                console.warn('[Taste Telemetry] 30s listen error:', err);
+              }
+            };
+            void logListen();
+          }
+        }
+      }
     };
 
     const onDurationChange = () => {
@@ -83,6 +116,26 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     };
 
     const onEnded = () => {
+      // Full completion reward (+0.5) if song played to completion naturally
+      if (hasLoggedListenRef.current && !hasLoggedCompleteRef.current) {
+        hasLoggedCompleteRef.current = true;
+        const current = currentTrackRef.current;
+        if (current && current.artists && current.artists[0]) {
+          const logComplete = async () => {
+            try {
+              const { error: rpcErr } = await supabase.rpc('record_taste_interaction', {
+                p_artist: current.artists[0],
+                p_delta: 0.5,
+                p_genre: null,
+              });
+              if (rpcErr) console.warn('[Taste Telemetry] Full completion RPC error:', rpcErr);
+            } catch (err) {
+              console.warn('[Taste Telemetry] Full completion error:', err);
+            }
+          };
+          void logComplete();
+        }
+      }
       handleAutoNext();
     };
 
@@ -122,6 +175,8 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
 
       setCurrentTrack(track);
       currentTrackRef.current = track;
+      hasLoggedListenRef.current = false;
+      hasLoggedCompleteRef.current = false;
       try {
         sessionStorage.setItem(LAST_PLAYING_TRACK_KEY, JSON.stringify(track));
       } catch {
@@ -220,6 +275,27 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const playNext = useCallback(() => {
     const activeQueue = queueRef.current;
     const activeTrack = currentTrackRef.current;
+    const audio = audioRef.current;
+
+    // Fast skip telemetry: deliberate skip between 2s and 10s (ignoring accidental <2s skips)
+    if (audio && audio.currentTime >= 2.0 && audio.currentTime < 10 && !hasLoggedListenRef.current) {
+      if (activeTrack && activeTrack.artists && activeTrack.artists[0]) {
+        const logSkip = async () => {
+          try {
+            const { error: rpcErr } = await supabase.rpc('record_taste_interaction', {
+              p_artist: activeTrack.artists[0],
+              p_delta: -1.0,
+              p_genre: null,
+            });
+            if (rpcErr) console.warn('[Taste Telemetry] Fast skip RPC error:', rpcErr);
+          } catch (err) {
+            console.warn('[Taste Telemetry] Fast skip error:', err);
+          }
+        };
+        void logSkip();
+      }
+    }
+
     if (!activeTrack || activeQueue.length === 0) return;
 
     const currentIndex = activeQueue.findIndex((t) => t.id === activeTrack.id);

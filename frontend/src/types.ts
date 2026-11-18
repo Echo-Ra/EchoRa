@@ -123,3 +123,48 @@ export interface ToastInfo {
   message: string;
 }
 
+export interface Playlist {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+  track_count?: number;
+}
+
+export interface PlaylistTrack {
+  id: string;
+  playlist_id: string;
+  track_id: string;
+  position: number;
+  added_at: string;
+  track?: Track;
+}
+
+export interface UserPreferencesRecord {
+  user_id: string;
+  discovery_mode: 'FAMILIAR' | 'BALANCED' | 'EXPLORE';
+  favorite_artists: string[];
+  favorite_genres: string[];
+  disliked_artists: string[];
+  disliked_genres: string[];
+  preferred_language: string | null;
+  allow_instrumental: boolean;
+  updated_at: string;
+}
+
+export interface UserTasteProfileRecord {
+  user_id: string;
+  artist_affinities: Record<string, { weight: number; last_interacted_at: string }>;
+  genre_affinities: Record<string, { weight: number; last_interacted_at: string }>;
+  acoustic_tendencies: {
+    preferred_energy?: string;
+    preferred_tempo_range?: [number, number];
+    vocals_bias?: string;
+  };
+  total_saved_tracks: number;
+  updated_at: string;
+}
+

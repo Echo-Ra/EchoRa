@@ -216,7 +216,7 @@ export function isArtistExclusivePrompt(prompt?: string | null, targetArtists: s
     return false;
   }
 
-  return true;
+  return false;
 }
 
 /**

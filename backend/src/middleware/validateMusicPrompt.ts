@@ -14,12 +14,16 @@ const userPreferencesSchema = z
     favoriteArtists: stringListSchema,
     dislikedGenres: stringListSchema,
     dislikedArtists: stringListSchema,
+    preferredLanguage: z.string().trim().nullable().optional(),
+    allowInstrumental: z.boolean().default(false),
   })
   .catch({
     favoriteGenres: [],
     favoriteArtists: [],
     dislikedGenres: [],
     dislikedArtists: [],
+    preferredLanguage: null,
+    allowInstrumental: false,
   });
 
 const historySignalSchema = z.object({
@@ -49,6 +53,8 @@ export const musicPromptSchema = z.object({
     favoriteArtists: [],
     dislikedGenres: [],
     dislikedArtists: [],
+    preferredLanguage: null,
+    allowInstrumental: false,
   }),
   historySignals: z.array(historySignalSchema).catch([]).default([]),
   browserContext: browserContextSchema,

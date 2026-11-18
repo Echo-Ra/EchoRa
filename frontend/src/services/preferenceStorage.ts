@@ -2,6 +2,7 @@ import type {
   DiscoveryMode,
   HistorySignal,
   InteractionRecord,
+  PreferenceListCategory,
   StoredProfile,
   UserPreferences,
 } from "../types/discovery";
@@ -160,7 +161,7 @@ export function setDiscoveryMode(mode: DiscoveryMode): StoredProfile {
  * Adds an item to a preference array (case-insensitive deduplication).
  */
 export function addPreference(
-  category: keyof UserPreferences,
+  category: PreferenceListCategory,
   item: string,
 ): StoredProfile {
   const trimmed = item.trim();
@@ -189,7 +190,7 @@ export function addPreference(
  * Removes an item from a preference array.
  */
 export function removePreference(
-  category: keyof UserPreferences,
+  category: PreferenceListCategory,
   item: string,
 ): StoredProfile {
   const current = getStoredProfile();

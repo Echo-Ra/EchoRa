@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { Wordmark } from './Wordmark';
-import { SlidersHorizontal, LogOut, LogIn, UserRound, ChevronDown, FlaskConical, Check, Circle, X } from 'lucide-react';
+import { SlidersHorizontal, LogOut, LogIn, UserRound, ChevronDown, FlaskConical, Check, Circle, X, ListMusic } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import type { StatusResponse } from '../types';
@@ -8,6 +8,7 @@ import type { StatusResponse } from '../types';
 interface TopBarProps {
   status?: StatusResponse | null;
   onOpenPreferences?: () => void;
+  onOpenPlaylists?: () => void;
   activeTab?: 'discover' | 'transition';
   onTabChange?: (tab: 'discover' | 'transition') => void;
   onOpenSignIn?: () => void;
@@ -20,6 +21,7 @@ interface TopBarProps {
 export const TopBar = memo(function TopBar({
   status,
   onOpenPreferences,
+  onOpenPlaylists,
   activeTab = 'discover',
   onTabChange,
   onOpenSignIn,
@@ -265,6 +267,20 @@ export const TopBar = memo(function TopBar({
                           {isMockMode ? 'On' : 'Off'}
                         </span>
                       </button>
+
+                      {onOpenPlaylists && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMenuOpen(false);
+                            onOpenPlaylists();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs text-text hover:bg-white/[0.1] transition-colors cursor-pointer text-left"
+                        >
+                          <ListMusic className="w-4 h-4 text-cyan-300" />
+                          <span className="font-medium">My Playlists</span>
+                        </button>
+                      )}
 
                       {onOpenPreferences && (
                         <button

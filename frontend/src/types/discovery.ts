@@ -1,10 +1,14 @@
 export type DiscoveryMode = "FAMILIAR" | "BALANCED" | "EXPLORE";
 
+export type PreferenceListCategory = 'favoriteGenres' | 'favoriteArtists' | 'dislikedGenres' | 'dislikedArtists';
+
 export interface UserPreferences {
   favoriteGenres: string[];
   favoriteArtists: string[];
   dislikedGenres: string[];
   dislikedArtists: string[];
+  preferredLanguage?: string | null;
+  allowInstrumental?: boolean;
 }
 
 export interface InteractionRecord {

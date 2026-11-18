@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { clearPreferencesAndHistory } from '../services/preferenceStorage';
 
 export interface UserProfile {
   id: string;
@@ -25,7 +26,7 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const GUEST_STORAGE_KEY = 'echora_guest_mode';
 
@@ -174,6 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setIsGuest(false);
     localStorage.removeItem(GUEST_STORAGE_KEY);
+    clearPreferencesAndHistory();
     if (window.location.hash || window.location.search) {
       window.history.replaceState(null, '', window.location.pathname);
     }

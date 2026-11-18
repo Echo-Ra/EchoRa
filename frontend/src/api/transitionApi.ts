@@ -71,17 +71,44 @@ export async function planTransition(
   }
 }
 
+export interface TransitionMusicOptions {
+  preferences?: {
+    favoriteArtists?: string[];
+    favoriteGenres?: string[];
+    dislikedArtists?: string[];
+    dislikedGenres?: string[];
+    preferredLanguage?: string | null;
+    allowInstrumental?: boolean;
+  };
+  tasteProfile?: {
+    topArtists?: string[];
+  };
+  signal?: AbortSignal;
+}
+
 export async function generateTransitionMusic(
   startingMood: string,
   destinationMood: string,
   stages: MoodStage[],
-  signal?: AbortSignal,
+  signalOrOptions?: AbortSignal | TransitionMusicOptions,
 ): Promise<TransitionJourneyResponse> {
+  const options: TransitionMusicOptions =
+    signalOrOptions instanceof AbortSignal
+      ? { signal: signalOrOptions }
+      : (signalOrOptions ?? {});
+  const { preferences, tasteProfile, signal } = options;
+
   try {
     const res = await fetch("/api/transition/generate-music", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ startingMood, destinationMood, stages }),
+      body: JSON.stringify({
+        startingMood,
+        destinationMood,
+        stages,
+        ...(preferences ? { preferences } : {}),
+        ...(tasteProfile ? { tasteProfile } : {}),
+      }),
       signal,
     });
     return await handleResponse<TransitionJourneyResponse>(res);

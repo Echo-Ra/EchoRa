@@ -1,4 +1,5 @@
 import type { Track } from "../../types/track.js";
+import type { UserPreferences } from "../../types/discovery.js";
 import type {
   MoodStage,
   StagePlaylist,
@@ -15,13 +16,21 @@ import { enrichTracksWithPreviews } from "../spotify/previewEnricher.js";
 
 const MAX_TRACKS_PER_STAGE = 5;
 
+export interface PlaylistAssemblerOptions {
+  preferences?: UserPreferences;
+  tasteProfile?: {
+    topArtists?: string[];
+  };
+  signal?: AbortSignal;
+}
+
 export interface PlaylistAssembler {
   assemble(
     startingMood: string,
     destinationMood: string,
     stages: MoodStage[],
     intents: StageSearchIntent[],
-    signal?: AbortSignal,
+    signalOrOptions?: AbortSignal | PlaylistAssemblerOptions,
   ): Promise<TransitionJourneyResponse>;
 }
 
@@ -35,8 +44,30 @@ export function createPlaylistAssembler(
       destinationMood: string,
       stages: MoodStage[],
       intents: StageSearchIntent[],
-      signal?: AbortSignal,
+      signalOrOptions?: AbortSignal | PlaylistAssemblerOptions,
     ): Promise<TransitionJourneyResponse> {
+      const options: PlaylistAssemblerOptions =
+        signalOrOptions instanceof AbortSignal
+          ? { signal: signalOrOptions }
+          : (signalOrOptions ?? {});
+      const signal = options.signal;
+      const preferences = options.preferences;
+      const tasteProfile = options.tasteProfile;
+
+      // Extract liked artists set for 50/50 stage balancing
+      const rawLiked = [
+        ...(tasteProfile?.topArtists || []),
+        ...(preferences?.favoriteArtists || []),
+      ];
+      const likedArtists = new Set(
+        rawLiked.map((a) => a.toLowerCase().trim()).filter(Boolean),
+      );
+
+      // Disliked artists blacklist (0% tolerance)
+      const dislikedArtists = new Set(
+        (preferences?.dislikedArtists || []).map((a) => a.toLowerCase().trim()).filter(Boolean),
+      );
+
       const seenSignatures = new Set<string>();
       const cumulativeArtistCounts: Record<string, number> = {};
       const stagePlaylists: StagePlaylist[] = [];
@@ -55,10 +86,23 @@ export function createPlaylistAssembler(
           intent?.query,
         ].filter((q): q is string => Boolean(q && q.trim()));
 
-        const queriesToRun =
+        const baseQueries =
           candidateQueries.length > 0
             ? Array.from(new Set(candidateQueries)).slice(0, 3)
             : [`hindi ${stage.mood} music`, `${stage.mood} indie music`];
+
+        // Budget up to 2 familiar queries (Anti-429 Guard: max 2 familiar queries per stage)
+        const familiarQueries: string[] = [];
+        if (likedArtists.size > 0) {
+          const likedList = Array.from(likedArtists);
+          for (const artist of likedList.slice(0, 2)) {
+            familiarQueries.push(`artist:"${artist}" ${stage.mood}`);
+          }
+        }
+
+        const queriesToRun = Array.from(
+          new Set([...baseQueries, ...familiarQueries]),
+        ).slice(0, 5);
 
         let stageCandidates: Track[] = [];
 
@@ -73,6 +117,12 @@ export function createPlaylistAssembler(
             const candidateMap = new Map<string, Track>();
             for (const batch of queryResults) {
               for (const track of batch) {
+                // Hard blacklist enforcement
+                const isBlacklisted = track.artists.some((a) =>
+                  dislikedArtists.has(a.toLowerCase().trim()),
+                );
+                if (isBlacklisted) continue;
+
                 const sig = getSongSignature(track);
                 if (!seenSignatures.has(sig) && !candidateMap.has(track.id)) {
                   candidateMap.set(track.id, track);
@@ -175,6 +225,7 @@ export function createPlaylistAssembler(
             maxPerArtist: 1,
             maxCumulativePerArtist: 2,
             allowInstrumental,
+            likedArtists,
           });
         }
 
