@@ -8,6 +8,7 @@ import {
   addPreference,
   removePreference,
   clearPreferencesAndHistory,
+  sanitizeDiscoveryMode,
 } from '../services/preferenceStorage';
 import { AuthContext } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -72,7 +73,7 @@ export function PreferencesModal({
           const current = getStoredProfile();
           const merged: StoredProfile = {
             ...current,
-            discoveryMode: (data.discovery_mode as any) || current.discoveryMode,
+            discoveryMode: sanitizeDiscoveryMode(data.discovery_mode),
             preferences: {
               ...current.preferences,
               favoriteArtists: data.favorite_artists || [],

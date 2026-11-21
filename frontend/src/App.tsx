@@ -28,6 +28,7 @@ import {
   getStoredProfile,
   saveProfile,
   setDiscoveryMode,
+  sanitizeDiscoveryMode,
   subscribeToProfile,
 } from './services/preferenceStorage';
 import { supabase } from './lib/supabase';
@@ -84,6 +85,8 @@ function AppContent({ api }: AppProps = {}) {
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const [isPlaylistsOpen, setIsPlaylistsOpen] = useState(false);
   const [addToPlaylistTrack, setAddToPlaylistTrack] = useState<Track | null>(null);
+  const hasUserChangedModeRef = useRef(false);
+  const modeSyncSeqRef = useRef(0);
   const [activeTab, setActiveTab] = useState<'discover' | 'transition'>('discover');
   const [transitionMood, setTransitionMood] = useState<string | undefined>();
 
@@ -132,9 +135,11 @@ function AppContent({ api }: AppProps = {}) {
 
         if (data && !error) {
           const current = getStoredProfile();
+          const remoteMode = sanitizeDiscoveryMode(data.discovery_mode);
+          const effectiveMode = hasUserChangedModeRef.current ? current.discoveryMode : remoteMode;
           const merged: StoredProfile = {
             ...current,
-            discoveryMode: (data.discovery_mode as any) || current.discoveryMode,
+            discoveryMode: effectiveMode,
             preferences: {
               ...current.preferences,
               favoriteArtists: data.favorite_artists || [],
@@ -223,21 +228,43 @@ function AppContent({ api }: AppProps = {}) {
         return [trimmed, ...filtered].slice(0, 6);
       });
 
-      await search(trimmed);
+      await search(trimmed, { discoveryMode: profile.discoveryMode });
     },
-    [search]
+    [search, profile.discoveryMode]
   );
 
   const handleModeChange = useCallback(
     (newMode: DiscoveryMode) => {
+      hasUserChangedModeRef.current = true;
       const updated = setDiscoveryMode(newMode);
       setProfile(updated);
+
+      if (user && !isGuest) {
+        const seq = ++modeSyncSeqRef.current;
+        void supabase
+          .from('user_preferences')
+          .upsert(
+            {
+              user_id: user.id,
+              discovery_mode: newMode,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id' }
+          )
+          .then(({ error }) => {
+            if (seq !== modeSyncSeqRef.current) return;
+            if (error) {
+              console.warn('[App] Failed to sync discovery mode to cloud:', error);
+            }
+          });
+      }
+
       const modeName = newMode.charAt(0) + newMode.slice(1).toLowerCase();
       // Clear any previous mode switch toasts and dismiss quickly (1.5s)
       setToasts((prev) => prev.filter((t) => !t.message.startsWith('Discovery mode set to')));
       addToast(`Discovery mode set to ${modeName}.`, 'info', 1500);
     },
-    [addToast]
+    [user, isGuest, addToast]
   );
 
   const handleOpenPreferences = useCallback(() => {
