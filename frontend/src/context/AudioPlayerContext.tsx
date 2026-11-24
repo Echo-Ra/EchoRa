@@ -62,8 +62,41 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     audio.volume = 0.85;
     audioRef.current = audio;
 
+    const onEnded = () => {
+      // Full completion reward (+0.5) if song played to completion naturally
+      if (hasLoggedListenRef.current && !hasLoggedCompleteRef.current) {
+        hasLoggedCompleteRef.current = true;
+        const current = currentTrackRef.current;
+        if (current && current.artists && current.artists[0]) {
+          const logComplete = async () => {
+            try {
+              const { error: rpcErr } = await supabase.rpc('record_taste_interaction', {
+                p_artist: current.artists[0],
+                p_delta: 0.5,
+                p_genre: null,
+              });
+              if (rpcErr) console.warn('[Taste Telemetry] Full completion RPC error:', rpcErr);
+            } catch (err) {
+              console.warn('[Taste Telemetry] Full completion error:', err);
+            }
+          };
+          void logComplete();
+        }
+      }
+      handleAutoNext();
+    };
+
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+
+      const track = currentTrackRef.current;
+      const expectedSec = track?.durationMs ? track.durationMs / 1000 : 0;
+
+      // Guard: If audio stream exceeds known track length and playback reaches end of actual song, advance cleanly
+      if (expectedSec > 30 && audio.duration > expectedSec + 20 && audio.currentTime >= expectedSec) {
+        onEnded();
+        return;
+      }
 
       // 30s listen telemetry trigger for Database-as-Brain (with loop cooldown: max 2 rewards/artist/hour)
       if (audio.currentTime >= 30 && !hasLoggedListenRef.current) {
@@ -97,7 +130,15 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
 
     const onDurationChange = () => {
       if (audio.duration && !isNaN(audio.duration)) {
-        setDuration(audio.duration);
+        const track = currentTrackRef.current;
+        const expectedSec = track?.durationMs ? track.durationMs / 1000 : 0;
+        // If stream duration is significantly inflated (e.g. >1.5x expected length from HE-AAC or video bloat),
+        // clamp to expected duration so scrubber remains accurate to the actual song
+        if (expectedSec > 30 && audio.duration > expectedSec * 1.5) {
+          setDuration(expectedSec);
+        } else {
+          setDuration(audio.duration);
+        }
       }
     };
 
@@ -113,30 +154,6 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     const onPause = () => {
       setIsPlaying(false);
       setIsBuffering(false);
-    };
-
-    const onEnded = () => {
-      // Full completion reward (+0.5) if song played to completion naturally
-      if (hasLoggedListenRef.current && !hasLoggedCompleteRef.current) {
-        hasLoggedCompleteRef.current = true;
-        const current = currentTrackRef.current;
-        if (current && current.artists && current.artists[0]) {
-          const logComplete = async () => {
-            try {
-              const { error: rpcErr } = await supabase.rpc('record_taste_interaction', {
-                p_artist: current.artists[0],
-                p_delta: 0.5,
-                p_genre: null,
-              });
-              if (rpcErr) console.warn('[Taste Telemetry] Full completion RPC error:', rpcErr);
-            } catch (err) {
-              console.warn('[Taste Telemetry] Full completion error:', err);
-            }
-          };
-          void logComplete();
-        }
-      }
-      handleAutoNext();
     };
 
     const onError = (e: Event) => {

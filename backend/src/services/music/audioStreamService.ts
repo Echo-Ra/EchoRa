@@ -12,6 +12,37 @@ interface CachedAudioUrl {
 const audioUrlCache = new Map<string, CachedAudioUrl>();
 
 /**
+ * Selects the highest quality, most browser-compatible audio format.
+ * Prioritizes standard AAC-LC (itag 140 @ 44.1kHz) or Opus (itag 251 @ 48kHz).
+ * Specifically filters out ITAG 139 (HE-AAC v1 / SBR @ 22,050 Hz) which causes
+ * browser media demuxers to calculate double (2x) duration and play trailing silence.
+ */
+export function selectOptimalAudioFormat(formats: any[]): any | null {
+  const audioFormats = formats?.filter((f: any) => f.hasAudio && !f.hasVideo && f.url) || [];
+  if (audioFormats.length === 0) return null;
+
+  // 1. Prefer standard AAC-LC 128-130 kbps (ITAG 140) @ 44.1 kHz - universal browser native support
+  const itag140 = audioFormats.find((f: any) => f.itag === 140);
+  if (itag140) return itag140;
+
+  // 2. Prefer high-quality Opus (ITAG 251) @ 48 kHz
+  const itag251 = audioFormats.find((f: any) => f.itag === 251);
+  if (itag251) return itag251;
+
+  // 3. Filter out low-sample-rate HE-AAC formats with SBR timescale issues (itag 139 / mp4a.40.5 / <=24000Hz)
+  const safeFormats = audioFormats.filter((f: any) => {
+    const isHeAac =
+      f.itag === 139 ||
+      (typeof f.mimeType === "string" && f.mimeType.includes("mp4a.40.5")) ||
+      (f.audioSampleRate && Number(f.audioSampleRate) <= 24000);
+    return !isHeAac;
+  });
+
+  const pool = safeFormats.length > 0 ? safeFormats : audioFormats;
+  return [...pool].sort((a: any, b: any) => (b.audioBitrate || 0) - (a.audioBitrate || 0))[0] || null;
+}
+
+/**
  * Resolves a track to its direct playable audio stream URL.
  * First tries YouTube direct audio with a strict safety timeout,
  * then seamlessly falls back to high-fidelity 30s public preview streams (iTunes/embed).
@@ -39,18 +70,17 @@ export async function getDirectAudioStreamUrl(
       );
 
       const info = (await Promise.race([infoPromise, timeoutPromise])) as any;
-      const audioFormats = info?.formats?.filter((f: any) => f.hasAudio && !f.hasVideo);
+      const bestFormat = selectOptimalAudioFormat(info?.formats || []);
 
-      if (audioFormats && audioFormats.length > 0) {
-        const bestFormat = audioFormats[0];
-        const url = bestFormat?.url;
-        if (url) {
-          audioUrlCache.set(cacheKey, {
-            url,
-            expiresAt: Date.now() + 3 * 3600 * 1000,
-          });
-          return url;
-        }
+      if (bestFormat?.url) {
+        logger.info(
+          `[AudioStream] Selected format itag ${bestFormat.itag} (${bestFormat.mimeType || "audio"}, ${bestFormat.audioBitrate || "unknown"}kbps, ${bestFormat.audioSampleRate || "unknown"}Hz)`
+        );
+        audioUrlCache.set(cacheKey, {
+          url: bestFormat.url,
+          expiresAt: Date.now() + 3 * 3600 * 1000,
+        });
+        return bestFormat.url;
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

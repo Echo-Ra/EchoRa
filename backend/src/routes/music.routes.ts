@@ -80,7 +80,11 @@ export function createMusicRouter(
       }
 
       if (upstreamRes.body) {
-        Readable.fromWeb(upstreamRes.body as any).pipe(res);
+        const readable = Readable.fromWeb(upstreamRes.body as any);
+        readable.pipe(res);
+        res.on("close", () => {
+          readable.destroy();
+        });
       } else {
         res.end();
       }
