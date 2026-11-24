@@ -655,7 +655,7 @@ export function createSearchPipeline({
       let aiRecommendationsAdded = 0;
       if (
         activeReranker.suggestTrackRecommendations &&
-        (relatedSongsRequested || finalTracks.length < initialResultLimit || (resultConfidence !== null && resultConfidence < 75))
+        (relatedSongsRequested || (!isExclusiveArtist && finalTracks.length < initialResultLimit) || (!isExclusiveArtist && resultConfidence !== null && resultConfidence < 75))
       ) {
         try {
           const suggestions = await activeReranker.suggestTrackRecommendations(
@@ -714,9 +714,10 @@ export function createSearchPipeline({
               rerankerPreferences(fallbackContext, discoveryResult),
               {
                 maxPerArtist: relatedSongsRequested ? 2 : pageArtistLimit,
-                maxCumulativePerArtist: relatedSongsRequested ? 6 : pageArtistLimit,
+                maxCumulativePerArtist: isExclusiveArtist ? 25 : (relatedSongsRequested ? 6 : pageArtistLimit),
                 relatedSongsRequested,
                 maxResults: requestedResultLimit,
+                isExclusive: isExclusiveArtist,
               },
               contextualSignals,
             );
@@ -732,9 +733,10 @@ export function createSearchPipeline({
               recommendationIntent,
               {
                 maxPerArtist: relatedSongsRequested ? 2 : pageArtistLimit,
-                maxCumulativePerArtist: relatedSongsRequested ? 6 : pageArtistLimit,
+                maxCumulativePerArtist: isExclusiveArtist ? 25 : (relatedSongsRequested ? 6 : pageArtistLimit),
                 relatedSongsRequested,
                 maxResults: requestedResultLimit,
+                isExclusive: isExclusiveArtist,
               },
             );
             if (relatedSongsRequested) {
@@ -753,7 +755,7 @@ export function createSearchPipeline({
               (resultConfidence !== null && recommendationConfidence > resultConfidence) ||
               (recommendationTracks.length > finalTracks.length && recommendationConfidence >= (resultConfidence ?? 0) - 5)
             );
-            if (relatedSongsRequested || fillsShortResult || improvesResult) {
+            if ((relatedSongsRequested || fillsShortResult || improvesResult) && (!isExclusiveArtist || finalTracks.length < initialResultLimit)) {
               finalTracks = recommendationTracks;
               resultConfidence = recommendationConfidence;
               aiRecommendationsAdded = finalTracks.filter((track) => track.aiRecommended).length;

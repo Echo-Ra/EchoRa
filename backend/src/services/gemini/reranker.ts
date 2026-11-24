@@ -203,13 +203,33 @@ export function isArtistExclusivePrompt(prompt?: string | null, targetArtists: s
 
   const isLanguageExclusive = /\b(only\s+(?:hindi|punjabi|english|tamil|telugu|bengali|marathi|spanish|korean|japanese|urdu|gujarati|bhojpuri)|(?:hindi|punjabi|english|tamil|telugu|bengali|marathi|spanish|korean|japanese|urdu|gujarati|bhojpuri)\s+only)\b/i.test(prompt);
 
+  const normPrompt = normalizeEntityName(prompt);
   const matchesArtistDirectly = targetArtists.some((art) => {
-    const escaped = art.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(?:^|\\b)${escaped}\\s+(?:only|just|pure|exclusively)|(?:only|just|pure|exclusively)\\s+${escaped}(?:\\b|$)`, "i").test(prompt);
+    const normArt = normalizeEntityName(art);
+    if (!normArt) return false;
+    const escapedArt = art.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedNorm = normArt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return (
+      new RegExp(`(?:^|\\b)${escapedArt}\\s+(?:only|just|pure|exclusively)|(?:only|just|pure|exclusively)\\s+${escapedArt}(?:\\b|$)`, "i").test(prompt) ||
+      new RegExp(`${escapedNorm}(?:only|just|pure|exclusively)|(?:only|just|pure|exclusively)${escapedNorm}`, "i").test(normPrompt)
+    );
   });
 
   if (matchesArtistDirectly) {
     return true;
+  }
+
+  // For multi-artist requests (e.g. "raftaar and krsna only", "only raftaar and krsna"),
+  // if all requested artists are present in the prompt and an exclusivity word is present,
+  // mark it exclusive unless it was explicitly language exclusive.
+  if (targetArtists.length > 1) {
+    const allArtistsPresent = targetArtists.every((art) => {
+      const normArt = normalizeEntityName(art);
+      return normArt ? normPrompt.includes(normArt) : false;
+    });
+    if (allArtistsPresent && !isLanguageExclusive) {
+      return true;
+    }
   }
 
   if (isLanguageExclusive) {
@@ -1047,8 +1067,12 @@ STRICT SELECTION RULES:
      * Strictly DISQUALIFY and REJECT all purely instrumental tracks, background scores (BGM), karaoke versions, and theme tunes without lyrics.
      * All selected tracks MUST feature genuine vocal singing with lyrics.
 2. ARTIST DIVERSITY & SATURATION LIMIT:
-   - Unless the user explicitly requested a specific artist (e.g. 'Arijit Singh', 'Coldplay'), select AT MOST 2 tracks per artist across the entire top 10.
-   - NEVER allow a single artist to dominate the recommendation list; give the user a rich, balanced variety of different artists.
+   - If the user explicitly requested ONE OR MORE specific artists (e.g. 'Arijit Singh', 'Coldplay and Radiohead', 'Raftaar and KR$NA'):
+     * Prioritize and select tracks ONLY from those requested artists! Distribute slots evenly among the requested artists.
+     * NEVER select or pad with tracks from unrequested outside artists when specific artists are explicitly demanded!
+   - For general mood/genre queries without specific requested artists:
+     * Select AT MOST 2 tracks per artist across the entire top 10.
+     * NEVER allow a single artist to dominate the recommendation list; give the user a rich, balanced variety of different artists.
    - Apply supplied userPreferences according to the active discovery mode. Never let a saved favorite override an explicit request or saved dislike.
 3. NEGATIVE CONSTRAINTS & EXCLUSIONS:
    - Strictly inspect each candidate against the user's negative constraints (excluded artists, excluded genres, negative keywords like 'no rap', 'except Arijit Singh', 'without heavy beats').

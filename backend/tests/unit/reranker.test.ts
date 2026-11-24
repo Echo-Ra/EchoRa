@@ -1041,6 +1041,8 @@ describe("Semantic Reranker (reranker.ts)", () => {
 
     it("isArtistExclusivePrompt: disambiguates artist exclusivity from language/mood exclusivity", () => {
       expect(isArtistExclusivePrompt("krsna and raftaar only", ["KR$NA", "raftaar"])).toBe(true);
+      expect(isArtistExclusivePrompt("raftaar and krsna only", ["raftaar", "KR$NA"])).toBe(true);
+      expect(isArtistExclusivePrompt("only raftaar and krsna", ["raftaar", "KR$NA"])).toBe(true);
       expect(isArtistExclusivePrompt("arijit singh only", ["arijit singh"])).toBe(true);
       expect(isArtistExclusivePrompt("only arijit singh", ["arijit singh"])).toBe(true);
       expect(isArtistExclusivePrompt("only hindi songs", [])).toBe(false);
