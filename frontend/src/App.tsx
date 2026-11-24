@@ -297,25 +297,27 @@ function AppContent({ api }: AppProps = {}) {
       });
 
       if (res && res.tracks && res.tracks.length > 0) {
-        let totalCount = cumulativeTracks.length;
+        const existingIds = new Set(cumulativeTracks.map((t) => t.id));
+        const existingSigs = new Set(cumulativeTracks.map((t) => getTrackSignature(t)));
+        const fresh = res.tracks.filter((t) => {
+          if (existingIds.has(t.id)) return false;
+          return !existingSigs.has(getTrackSignature(t));
+        });
+        const remainingSlots = Math.max(0, 25 - cumulativeTracks.length);
+        const tracksToAdd = fresh.slice(0, remainingSlots);
+        const nextTotal = cumulativeTracks.length + tracksToAdd.length;
+
         setCumulativeTracks((prev) => {
-          const existingIds = new Set(prev.map((t) => t.id));
-          const existingSigs = new Set(prev.map((t) => getTrackSignature(t)));
-          const fresh = res.tracks.filter((t) => {
-            if (existingIds.has(t.id)) return false;
-            return !existingSigs.has(getTrackSignature(t));
-          });
-          const remainingSlots = Math.max(0, 25 - prev.length);
-          const tracksToAdd = fresh.slice(0, remainingSlots);
-          const updated = [...prev, ...tracksToAdd];
-          totalCount = updated.length;
-          return updated;
+          const prevIds = new Set(prev.map((t) => t.id));
+          const prevSigs = new Set(prev.map((t) => getTrackSignature(t)));
+          const toAdd = res.tracks.filter((t) => !prevIds.has(t.id) && !prevSigs.has(getTrackSignature(t)));
+          return [...prev, ...toAdd.slice(0, Math.max(0, 25 - prev.length))];
         });
         appendQueue(res.tracks);
         setCurrentPage(nextPage);
 
         // Stop Load More once 25 tracks are assembled
-        const hasReachedLimit = totalCount >= 25;
+        const hasReachedLimit = nextTotal >= 25;
         setHasMorePages(!hasReachedLimit && res.hasMore);
       } else {
         setHasMorePages(false);

@@ -840,9 +840,8 @@ export function createSearchPipeline({
 
       if (mode === "mock" || (!spotifySearch && !youtubeMusicSearch)) {
         const available = BACKEND_MOCK_TRACKS.filter((t) => !excludeIdSet.has(t.id));
-        const PAGE_SIZE = 10;
-        const remainingSlots = Math.max(0, PAGE_SIZE - excludeTrackIds.length);
-        const batchSize = Math.min(PAGE_SIZE, remainingSlots);
+        const remainingSlots = Math.max(0, 25 - excludeTrackIds.length);
+        const batchSize = Math.min(5, remainingSlots);
         const nextBatch = available.slice(0, batchSize);
         const totalAfter = excludeTrackIds.length + nextBatch.length;
         return {

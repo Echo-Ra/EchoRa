@@ -129,12 +129,13 @@ export const TrackCard = memo(function TrackCard({
   return (
     <motion.div
       ref={cardRef}
-      variants={{
-        hidden: shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 },
-        visible: shouldReduceMotion
-          ? { opacity: 1, transition: { duration: 0.12 } }
-          : { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', damping: 26, stiffness: 320 } },
-      }}
+      initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={
+        shouldReduceMotion
+          ? { duration: 0.12 }
+          : { type: 'spring', damping: 26, stiffness: 320 }
+      }
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
